@@ -7,8 +7,8 @@ import datetime
 
 load_dotenv()
 
-st.title("🌱 사회초년생 금융 방어선 챗봇")
-st.write("갓 취업해서 독립이 막막한 초년생을 위한 맞춤 전세/금융 정보를 제공합니다.")
+st.title("💬 통합 금융 방어선 챗봇")
+st.write("니 상황을 짧게 말하고 전세대출이나 금융 상품 궁금한 거 물어봐라. 헛소리 없이 데이터로 조져준다.")
 
 fss_api_key = os.getenv("FSS_API_KEY")
 openai_api_key = st.sidebar.text_input("OpenAI API Key (sk-...)", type="password")
@@ -22,21 +22,20 @@ if not openai_api_key:
 
 client = OpenAI(api_key=openai_api_key)
 
-# 💡 주의: 1번 방이니까 messages_1 로 확실하게 독립 (이거 안 바꾸면 4번 방이랑 채팅 섞임)
-if "messages_1" not in st.session_state:
-    st.session_state["messages_1"] = [{"role": "assistant", "content": "취업 축하드립니다! 이제 막 사회에 나와 독립을 준비하는 초년생을 위한 전세/금융 상품을 찾아드릴게요. 무엇이 궁금하신가요?"}]
+if "messages" not in st.session_state:
+    st.session_state["messages"] = [{"role": "assistant", "content": "반갑다. 초년생이든 취준생이든 쫄지 말고 물어봐. 팩트만 꽂아서 대답해 줄게."}]
 
-for msg in st.session_state["messages_1"]:
+for msg in st.session_state["messages"]:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-if prompt := st.chat_input("예: 월급 200인데 자취방 전세 대출 어디가 좋아?"):
-    st.session_state["messages_1"].append({"role": "user", "content": prompt})
+if prompt := st.chat_input("예: 나 백수인데 전세대출 가능한 곳 있어?"):
+    st.session_state["messages"].append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("금감원 데이터 분석 중..."):
+        with st.spinner("금감원 데이터 털어오는 중..."):
             url = "http://finlife.fss.or.kr/finlifeapi/rentHouseLoanProductsSearch.json"
             params = {"auth": fss_api_key, "topFinGrpNo": "020000", "pageNo": "1"}
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"}
@@ -48,13 +47,18 @@ if prompt := st.chat_input("예: 월급 200인데 자취방 전세 대출 어디
                     products = data.get('result', {}).get('baseList', [])
                     
                     current_year_month = datetime.datetime.now().strftime("%Y년 %m월")
-                    api_context = f"명심해. 현재 시점은 {current_year_month}이야. 금감원 최신 전세자금대출 데이터야:\n\n"
+                    api_context = f"지금 {current_year_month} 기준 금감원 전세자금대출 최신 데이터다:\n\n"
                     for p in products[:5]: 
-                        api_context += f"🏦 은행명: {p.get('kor_co_nm')}, 📌 상품명: {p.get('fin_prdt_nm')}, 📅 공시월: {p.get('dcls_month')}, 💰 대출한도: {p.get('loan_lmt')}, 📝 가입방법: {p.get('join_way')}\n"
+                        api_context += f"🏦 은행명: {p.get('kor_co_nm')}, 📌 상품명: {p.get('fin_prdt_nm')}, 💰 한도: {p.get('loan_lmt')}, 📝 가입방법: {p.get('join_way')}\n"
                     
-                    # 🧠 사회초년생 맞춤 가스라이팅
+                    # 🧠 통합 프롬프트: 알아서 눈치채고 대답
+                    sys_prompt = """너는 청년(사회초년생, 대학생, 군전역예정자, 취준생) 전체를 아우르는 통합 금융 멘토야. 
+                    사용자의 질문 맥락에서 현재 상황을 파악하고, 그에 맞춰 편안하고 직설적인 동네 형/누나 말투로 대답해. 
+                    '부모님께 손 벌려라', '룸쉐어 해라' 같은 쓰레기 훈수는 절대 두지 마. 
+                    오직 제공된 금감원 데이터를 바탕으로, 당장 현실적으로 가입 가능한 상품 정보만 팩트로 명확하게 꽂아줘."""
+                    
                     messages_for_ai = [
-                        {"role": "system", "content": "너는 이제 막 취업한 사회초년생을 위한 금융 상담 챗봇이야. 제공된 금감원 데이터를 활용하되, 부모님께 손 벌리라는 헛소리는 절대 하지 말고 초년생이 자립할 수 있게 실질적인 은행 상품 추천 위주로 팩트만 꽂아서 답변해줘."},
+                        {"role": "system", "content": sys_prompt},
                         {"role": "system", "content": api_context},
                         {"role": "user", "content": prompt}
                     ]
@@ -63,9 +67,8 @@ if prompt := st.chat_input("예: 월급 200인데 자취방 전세 대출 어디
                     ai_answer = completion.choices[0].message.content
                     
                     st.markdown(ai_answer)
-                    st.session_state["messages_1"].append({"role": "assistant", "content": ai_answer})
+                    st.session_state["messages"].append({"role": "assistant", "content": ai_answer})
                 else:
                     st.error("❌ 금감원 서버 연결 실패")
             except Exception as e:
                 st.error(f"❌ 챗봇 에러: {e}")
-                
